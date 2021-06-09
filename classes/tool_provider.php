@@ -229,7 +229,7 @@ class tool_provider extends ToolProvider {
 
         // Set the user data.
         $user = new stdClass();
-        
+        /*Test */
        /*modif*/  $user->email = core_user::clean_field($this->user->email, 'email');
         
         $user->username = helper::create_username($this->consumer->getKey(), $this->user->ltiUserId,/*modif*/$user->email);
