@@ -229,7 +229,6 @@ class tool_provider extends ToolProvider {
 
         // Set the user data.
         $user = new stdClass();
-        /*Test */
        /*modif*/  $user->email = core_user::clean_field($this->user->email, 'email');
         
         $user->username = helper::create_username($this->consumer->getKey(), $this->user->ltiUserId,/*modif*/$user->email);
@@ -326,15 +325,35 @@ class tool_provider extends ToolProvider {
             // May still be set from previous session, so unset it.
             unset($SESSION->forcepagelayout);
         }
-
-        // Enrol the user in the course with no role.
-        $result = helper::enrol_user($tool, $user->id);
-
-        // Display an error, if there is one.
-        if ($result !== helper::ENROLMENT_SUCCESSFUL) {
-            print_error($result, 'enrol_lti');
-            exit();
+        
+    /*---- Get That Fucking Partcipants ----*/
+        $params['courseid'] = $tool->courseid;
+        
+        $sql = "SELECT u.id, u.email "
+                . "FROM course c "
+                . "JOIN enrol en ON en.courseid = c.id "
+                . "JOIN user_enrolments ue ON ue.enrolid = en.id "
+                . "JOIN user u ON ue.userid = u.id WHERE c.id = :courseid";
+        
+        $user_already = false;
+        foreach ($DB->get_records_sql($sql, $params) as $u) {
+            if ($u->email == $user->email) {
+                $user_already = true;
+            } 
         }
+        
+        //if NOT allready ine the course with LTI
+        if (!$user_already) {
+            // Enrol the user in the course with no role.
+            $result = helper::enrol_user($tool, $user->id);
+     
+            // Display an error, if there is one.
+            if ($result !== helper::ENROLMENT_SUCCESSFUL) {
+                print_error($result, 'enrol_lti');
+                exit();
+            }
+        }
+    /*-------------------------------*/
 
         // Give the user the role in the given context.
         $roleid = $isinstructor ? $tool->roleinstructor : $tool->rolelearner;
