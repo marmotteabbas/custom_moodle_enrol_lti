@@ -357,8 +357,9 @@ class tool_provider extends ToolProvider {
 
         // Give the user the role in the given context.
         $roleid = $isinstructor ? $tool->roleinstructor : $tool->rolelearner;
-        role_assign($roleid, $user->id, $tool->contextid);
-
+        $coursecontext = \context_course::instance($tool->courseid);
+        
+        role_assign($roleid, $user->id, $coursecontext->id);
         // Login user.
         $sourceid = $this->user->ltiResultSourcedId;
         $serviceurl = $this->resourceLink->getSetting('lis_outcome_service_url');
