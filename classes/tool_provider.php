@@ -41,7 +41,7 @@ use moodle_url;
 use stdClass;
 
 require_once($CFG->dirroot . '/user/lib.php');
-
+require_once($CFG->dirroot.'/user/selector/lib.php');
 /**
  * Extends the IMS Tool provider library for the LTI enrolment.
  *
@@ -248,8 +248,55 @@ class tool_provider extends ToolProvider {
         // Get the user data from the LTI consumer.
         $user = helper::assign_user_tool_data($tool, $user);
 
-        // Check if the user exists.
-        if (/*modif*/!$dbuser = $DB->get_record('user', ['email' => $user->email, 'deleted' => 0])/*$DB->get_record('user', ['username' => $user->username, 'deleted' => 0])*/) {
+        
+       $type_solution = [0 => "standard", 1 => "grenoble", 2 => "hybride"];
+       $index_solution = 0;
+        
+        // If we use the complete Grenoble INP LTI solution
+        if ($type_solution[$index_solution] == "grenoble") {
+            // Check if the user exists.
+            if (/*modif*/!$dbuser = $DB->get_record('user', ['email' => $user->email, 'deleted' => 0])/*$DB->get_record('user', ['username' => $user->username, 'deleted' => 0])*/) {
+                // If the email was stripped/not set then fill it with a default one. This
+                // stops the user from being redirected to edit their profile page.
+                if (empty($user->email)) {
+                    $user->email = $user->username .  "@example.com";
+                }
+
+                $user->auth = 'lti';
+                $user->id = \user_create_user($user);
+
+                // Get the updated user record.
+                $user = $DB->get_record('user', ['id' => $user->id]);
+            } else {
+
+               foreach(get_admins() as $ads) {
+                   if ($dbuser->email == $ads->email) {
+                       die ("The email you are using is the email of an administrator of the provider platform. You are not allowed to use it. Please contact the administrator of the provider platform or grant the access with a administrator email at your own risk.");
+                   }
+               }
+
+                //I decided here that the Email is the only filter to access to recorded user on the plateform
+               /*modif*/ $user = $dbuser;
+                /*
+                if (helper::user_match($user, $dbuser)) {
+                    $user = $dbuser;
+                } else {
+                    // If email is empty remove it, so we don't update the user with an empty email.
+                    if (empty($user->email)) {
+                        unset($user->email);
+                    }
+
+                    $user->id = $dbuser->id;
+                    \user_update_user($user);
+
+                    // Get the updated user record.
+                    $user = $DB->get_record('user', ['id' => $user->id]);
+                }*/
+            }
+        } elseif ($type_solution[$index_solution] == "standard") {
+            $user->email = core_user::clean_field($this->user->email, 'email');
+            
+            if (!$dbuser = $DB->get_record('user', ['username' => $user->username, 'deleted' => 0, 'auth' => 'lti'])) {
             // If the email was stripped/not set then fill it with a default one. This
             // stops the user from being redirected to edit their profile page.
             if (empty($user->email)) {
@@ -261,27 +308,23 @@ class tool_provider extends ToolProvider {
 
             // Get the updated user record.
             $user = $DB->get_record('user', ['id' => $user->id]);
-        } else {
-           
-            //I decided here that the Email is the only filter to access to recorded user on the plateform
-           /*modif*/ $user = $dbuser;
-            /*
-            if (helper::user_match($user, $dbuser)) {
-                $user = $dbuser;
             } else {
-                // If email is empty remove it, so we don't update the user with an empty email.
-                if (empty($user->email)) {
-                    unset($user->email);
+                if (helper::user_match($user, $dbuser)) {
+                    $user = $dbuser;
+                } else {
+                    // If email is empty remove it, so we don't update the user with an empty email.
+                    if (empty($user->email)) {
+                        unset($user->email);
+                    }
+
+                    $user->id = $dbuser->id;
+                    \user_update_user($user);
+
+                    // Get the updated user record.
+                    $user = $DB->get_record('user', ['id' => $user->id]);
                 }
-
-                $user->id = $dbuser->id;
-                \user_update_user($user);
-
-                // Get the updated user record.
-                $user = $DB->get_record('user', ['id' => $user->id]);
-            }*/
+            }
         }
-
         // Update user image.
         if (isset($this->user) && isset($this->user->image) && !empty($this->user->image)) {
             $image = $this->user->image;
@@ -326,40 +369,56 @@ class tool_provider extends ToolProvider {
             unset($SESSION->forcepagelayout);
         }
         
-    /*---- Get That Fucking Partcipants ----*/
-        $params['courseid'] = $tool->courseid;
-        
-        $sql = "SELECT u.id, u.email "
-                . "FROM course c "
-                . "JOIN enrol en ON en.courseid = c.id "
-                . "JOIN user_enrolments ue ON ue.enrolid = en.id "
-                . "JOIN user u ON ue.userid = u.id WHERE c.id = :courseid";
-        
-        $user_already = false;
-        foreach ($DB->get_records_sql($sql, $params) as $u) {
-            if ($u->email == $user->email) {
-                $user_already = true;
-            } 
-        }
-        
-        //if NOT allready ine the course with LTI
-        if (!$user_already) {
-            // Enrol the user in the course with no role.
-            $result = helper::enrol_user($tool, $user->id);
-     
-            // Display an error, if there is one.
-            if ($result !== helper::ENROLMENT_SUCCESSFUL) {
-                print_error($result, 'enrol_lti');
-                exit();
-            }
-        }
-    /*-------------------------------*/
+        if ($type_solution[$index_solution] == "grenoble") {
+            /*---- Get That Fucking Partcipants ----*/
+                $params['courseid'] = $tool->courseid;
 
+                $sql = "SELECT u.id, u.email "
+                        . "FROM course c "
+                        . "JOIN enrol en ON en.courseid = c.id "
+                        . "JOIN user_enrolments ue ON ue.enrolid = en.id "
+                        . "JOIN user u ON ue.userid = u.id WHERE c.id = :courseid";
+
+                $user_already = false;
+                foreach ($DB->get_records_sql($sql, $params) as $u) {
+                        if ($u->email == $user->email) {
+                            $user_already = true;
+                        } 
+                }
+
+                //if NOT allready ine the course with LTI
+                if (!$user_already) {
+                    // Enrol the user in the course with no role.
+                    $result = helper::enrol_user($tool, $user->id);
+
+                    // Display an error, if there is one.
+                    if ($result !== helper::ENROLMENT_SUCCESSFUL) {
+                        print_error($result, 'enrol_lti');
+                        exit();
+                    }
+                }
+            /*-------------------------------*/
+        } elseif ($type_solution[$index_solution] == "standard") {
+                // Enrol the user in the course with no role.
+                $result = helper::enrol_user($tool, $user->id);
+
+                // Display an error, if there is one.
+                if ($result !== helper::ENROLMENT_SUCCESSFUL) {
+                    print_error($result, 'enrol_lti');
+                    exit();
+                }
+        }
+        
         // Give the user the role in the given context.
         $roleid = $isinstructor ? $tool->roleinstructor : $tool->rolelearner;
-        $coursecontext = \context_course::instance($tool->courseid);
         
-        role_assign($roleid, $user->id, $coursecontext->id);
+        if ($type_solution[$index_solution] == "grenoble") {
+            $coursecontext = \context_course::instance($tool->courseid);
+            role_assign($roleid, $user->id, $coursecontext->id);
+        } elseif ($type_solution[$index_solution] == "standard") {
+            role_assign($roleid, $user->id, $tool->contextid);
+        }
+        
         // Login user.
         $sourceid = $this->user->ltiResultSourcedId;
         $serviceurl = $this->resourceLink->getSetting('lis_outcome_service_url');
